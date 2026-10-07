@@ -41,7 +41,7 @@
 
 <!-- Three or four sentences: what a user asks for, and what they get back. -->
 
-
+FitFindr lets people search for the piece they're looking for and searches through all the listings to get the best match. The user types something like "vintage graphic tee under $30, size M" and the agent filters the listings down to what fits the price, size, and keywords. From the best match, it suggests a full outfit based on what you already own, pulling from your wardrobe. It also writes a caption so you can post about it.
 
 ---
 
@@ -134,6 +134,56 @@ $ python -c "from tools import create_fit_card; ..."
 
 ```
 
+**One full query**
+
+\`\`\`
+$ python app.py ask 'vintage graphic tee under $30, size M'
+
+  Found:    Y2K Baby Tee — Butterfly Print — $18.0 on depop
+
+  Outfit:   **Outfit 1: Casual Streetwear**
+*   Y2K Baby Tee — Butterfly Print
+*   Baggy straight-leg jeans, dark wash
+*   Chunky white sneakers
+*   Black cropped zip hoodie
+
+**Outfit 2: Retro Casual**
+*   Y2K Baby Tee — Butterfly Print
+*   Wide-leg khaki trousers
+*   Brown leather belt
+*   Black combat boots
+
+  Fit card: obsessed with this butterfly print Y2K baby tee 🦋 throwing it on with baggy denim and a zip hoodie for casual streetwear days, or dressing it down with khaki trousers and combat boots for a retro look. grab it on my depop for just $18 before I change my mind and keep it! ✨
+\`\`\`
+
+**The three tools, tested one at a time**
+
+\`\`\`
+$ python -c "from tools import search_listings; print(search_listings('graphic tee', max_price=30))"
+[{'id': 'lst_002', 'title': 'Y2K Baby Tee — Butterfly Print', 'price': 18.0, ...}, {'id': 'lst_006', 'title': 'Graphic Tee — 2003 Tour Bootleg Style', 'price': 24.0, ...}, ...]
+\`\`\`
+
+\`\`\`
+$ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+**Outfit 1: Casual Streetwear**
+*   Vintage Levi's 501 Jeans — Medium Wash
+*   White ribbed tank top
+*   Vintage black denim jacket
+*   Chunky white sneakers
+*   Black crossbody bag
+
+**Outfit 2: Cozy & Relaxed**
+*   Vintage Levi's 501 Jeans — Medium Wash
+*   Oversized grey crewneck sweatshirt
+*   Black combat boots
+*   Brown leather belt
+\`\`\`
+
+\`\`\`
+$ python -c "from tools import create_fit_card; from utils.data_loader import load_listings; print(create_fit_card('jeans and white sneakers', load_listings()[0]))"
+Found the ultimate vintage Levi's 501s and I'm lowkey obsessed with this wash. Pair them with a beat-up pair of white sneakers and you've got that effortless 90s off-duty model look down pat. Grab these for just $38 over on my Depop before I change my mind and keep them.
+\`\`\`
+
 ---
 
 ## How I Used AI
@@ -147,15 +197,15 @@ $ python -c "from tools import create_fit_card; ..."
 
 **Moment 1**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked AI to help me write the code for the tools — search_listings, suggest_outfit, create_fit_card — and the planning loop.
+- *What came back:* It came back with code for each of these.
+- *What I changed:* I implemented it, but checked and changed things when I saw how the search didn't actually match well.
 
 **Moment 2**
 
-- *What I asked for:*
-- *What came back:*
-- *What I changed:*
+- *What I asked for:* I asked it to test suggest_outfit against the example wardrobe given.
+- *What came back:* It came back with some items that didn't actually exist in the wardrobe.
+- *What I changed:* I realized it was coming up with things not in the wardrobe, so I used that as a criterion instead of patching it.
 
 <!-- ═══════════════════════ UNIT 4 — THE TEST ═══════════════════════
 
