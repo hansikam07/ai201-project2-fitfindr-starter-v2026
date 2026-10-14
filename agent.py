@@ -72,6 +72,7 @@ def _parse_query(query: str) -> dict:
 
 def run_agent(query: str, wardrobe: dict) -> dict:
     session = new_session(query, wardrobe)
+    trace.start_trace()
 
     count = 0
     count += 1
@@ -79,12 +80,14 @@ def run_agent(query: str, wardrobe: dict) -> dict:
 
     session["parsed"] = _parse_query(query)
     p = session["parsed"]
+    trace.step("parse_query", inputs=query, returned=p)
 
     session["search_results"] = call_tool("search_listings", {
         "description": p["description"],
         "size": p["size"],
         "max_price": p["max_price"],
     })
+    trace.step("search_listings (via MCP)", inputs=p, returned=session["search_results"])
 
     # THE BRANCH: nothing found -> explain and stop before suggest_outfit
     if not session["search_results"]:
@@ -94,22 +97,28 @@ def run_agent(query: str, wardrobe: dict) -> dict:
             + (f" under ${p['max_price']:.0f}" if p["max_price"] else "")
             + ". Try a higher price limit, drop the size, or use fewer keywords."
         )
+        trace.step("branch", note="empty results, stopping before suggest_outfit")
         return session
 
     session["selected_item"] = session["search_results"][0]
+    trace.step("branch", note="results found, continuing to suggest_outfit")
 
     try:
         session["outfit_suggestion"] = suggest_outfit(
             session["selected_item"], session["wardrobe"]
         )
+        trace.step("suggest_outfit", inputs=session["selected_item"], returned=session["outfit_suggestion"])
+
         session["fit_card"] = create_fit_card(
             session["outfit_suggestion"], session["selected_item"]
         )
+        trace.step("create_fit_card", inputs=session["outfit_suggestion"], returned=session["fit_card"])
     except ModelUnavailable as exc:
         session["error"] = (
             f"Found the item, but couldn't reach the model to finish: {exc} "
             "Try again in a moment, or check your API key."
         )
+        trace.step("suggest_outfit/create_fit_card", note=f"ModelUnavailable caught: {exc}")
 
     return session
 
