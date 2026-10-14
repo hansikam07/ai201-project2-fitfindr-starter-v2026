@@ -351,6 +351,32 @@ All five criteria passed in the after-run, so nothing's actually missed. But a c
 
 **If I had more time:** I'd move suggest_outfit onto MCP too, since it's a stretch feature I skipped to make sure I got the required stuff done first.
 
+## Stretch: Retry With Looser Constraints
+
+Declared and built in this unit. If `search_listings` returns nothing and the query had a size filter, the agent retries once without the size constraint before giving up.
+
+\`\`\`
+$ python3 app.py ask 'vintage graphic tee under $30, size XXL' --trace
+[1] parse_query
+      in:  vintage graphic tee under $30, size XXL
+      out: dict with keys: description, size, max_price
+[2] search_listings (via MCP)
+      in:  dict with keys: description, size, max_price
+      out: [] (empty)
+[3] search_listings retry (via MCP)
+      in:  dict with keys: description, size, max_price
+      out: 10 items: Y2K Baby Tee — Butterfly Print, Graphic Tee — 2003 Tour Bootleg Style, Vintage Band Tee — Faded Grey … +7 more
+[4] branch
+      →    results found, continuing to suggest_outfit
+[5] suggest_outfit
+      in:  Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      out: **Outfit 1: Casual Streetwear** ...
+[6] create_fit_card
+      ...
+\`\`\`
+
+The original search with size "XXL" (not in the data) returned empty. The retry dropped the size filter and found 10 real matches, and the agent completed normally with a found item, outfit, and fit card. `session["parsed"]["dropped_constraint"]` is set to `"size"` when this happens.
+
 <!-- ═════════════════════════════════════════════════════════════════════
 
      SUBMISSION CHECKLIST — unit 3

@@ -90,6 +90,22 @@ def run_agent(query: str, wardrobe: dict) -> dict:
     trace.step("search_listings (via MCP)", inputs=p, returned=session["search_results"])
 
     # THE BRANCH: nothing found -> explain and stop before suggest_outfit
+    if not session["search_results"] and p["size"]:
+        # Stretch: retry once without the size filter
+        retry_results = call_tool("search_listings", {
+            "description": p["description"],
+            "size": None,
+            "max_price": p["max_price"],
+        })
+        trace.step(
+            "search_listings retry (via MCP)",
+            inputs={"description": p["description"], "size": None, "max_price": p["max_price"]},
+            returned=retry_results,
+        )
+        if retry_results:
+            session["search_results"] = retry_results
+            session["parsed"]["dropped_constraint"] = "size"
+
     if not session["search_results"]:
         session["error"] = (
             f"Nothing matched '{p['description']}'"
