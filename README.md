@@ -59,24 +59,24 @@ FitFindr lets people search for the piece they're looking for and searches throu
 
 ### `search_listings`
 
-- **What it does:**
-- **Inputs:** <!-- name and type each: `max_price` (float), not "a price" -->
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Searches the listings data for items matching keywords, an optional size, and an optional price ceiling.
+- **Inputs:** `description` (str) — keywords like "vintage graphic tee". `size` (str or None) — matched as whole tokens against the listing's size field, so "M" matches "S/M" but not "XL". `max_price` (float or None) — a listing matches if its price is <= max_price.
+- **Returns:** A list of listing dicts (id, title, description, category, style_tags, size, condition, price, colors, brand, platform), sorted best match first by keyword overlap.
+- **When it has nothing:** Returns an empty list `[]` — never None, never an exception.
 
 ### `suggest_outfit`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Calls the model to suggest outfits pairing the found item with pieces from the user's wardrobe.
+- **Inputs:** `new_item` (dict) — a listing dict from search_listings. `wardrobe` (dict) — has an `items` key holding a list of wardrobe item dicts.
+- **Returns:** A str with 2 outfit ideas.
+- **When it has nothing:** If `wardrobe["items"]` is empty, returns a str of general styling advice instead of failing.
 
 ### `create_fit_card`
 
-- **What it does:**
-- **Inputs:**
-- **Returns:**
-- **When it has nothing:**
+- **What it does:** Calls the model to write a short, postable caption for the item and outfit, naming at least one real wardrobe piece.
+- **Inputs:** `outfit` (str) — the output of suggest_outfit. `new_item` (dict) — the listing dict.
+- **Returns:** A 2-4 sentence str caption mentioning the item, its price, and a piece from the outfit.
+- **When it has nothing:** If `outfit` is empty or whitespace, returns a message saying there's no outfit to caption yet, instead of raising an error.
 
 ---
 
@@ -142,6 +142,7 @@ $ python -c "from tools import search_listings; print(search_listings('graphic t
 
 \`\`\`
 $ python -c "from tools import suggest_outfit; from utils.data_loader import get_example_wardrobe, load_listings; print(suggest_outfit(load_listings()[0], get_example_wardrobe()))"
+
 **Outfit 1: Casual Streetwear**
 *   Vintage Levi's 501 Jeans — Medium Wash
 *   White ribbed tank top
@@ -270,47 +271,66 @@ with tying it around my waist for streetwear days. Seriously never taking this o
 
 **Happy path**
 
-```
-
-```
+\`\`\`
+$ python3 app.py ask 'vintage graphic tee under $30, size M' --trace
+[1] parse_query
+      in:  vintage graphic tee under $30, size M
+      out: dict with keys: description, size, max_price
+[2] search_listings (via MCP)
+      in:  dict with keys: description, size, max_price
+      out: 8 items: Y2K Baby Tee — Butterfly Print, Mesh Long-Sleeve Top — Black, 90s Silk Slip Dress — Floral, Midi Length … +5 more
+[3] branch
+      →    results found, continuing to suggest_outfit
+[4] suggest_outfit
+      in:  Y2K Baby Tee — Butterfly Print ($18.0, depop)
+      out: **Outfit 1: Casual Streetwear** *   Y2K Baby Tee — Butterfly Print *   Baggy straight-leg jeans, dark wash *  …
+[5] create_fit_card
+      in:  **Outfit 1: Casual Streetwear** *   Y2K Baby Tee — Butterfly Print *   Baggy straight-leg jeans, dark wash *  …
+      out: obsessed with this butterfly print Y2K baby tee 🦋 throwing it on with baggy denim and a zip hoodie for casual …
+\`\`\`
 
 **Empty search**
 
-```
+\`\`\`
+$ python3 app.py ask 'designer ballgown size XXS under $5' --trace
+[1] parse_query
+      in:  designer ballgown size XXS under $5
+      out: dict with keys: description, size, max_price
+[2] search_listings (via MCP)
+      in:  dict with keys: description, size, max_price
+      out: [] (empty)
+[3] branch
+      →    empty results, stopping before suggest_outfit
+\`\`\`
 
-```
+**On the MCP move:** I moved `search_listings` to run through `mcp_client.call_tool` in `run_agent`, registered as a tool in `mcp_server.py` with its name, description, and typed inputs matching the Tool Inventory. I tested it before and after the swap on the same query — the result was identical (same item, same outfit, same fit card), confirming the tool's return shape didn't change when the call method did.
 
-**On the MCP move:** <!-- what changed in your code, and whether anything
-behaved differently afterwards. If the rewire didn't work, say exactly where it
-broke — the error text and the last thing that worked. That earns the point in
-full. -->
+**Failure modes triggered:**
 
+- **Empty search:** `python3 app.py ask 'designer ballgown size XXS under $5'` → "Nothing matched 'designer ballgown' in size XXS under $5. Try a higher price limit, drop the size, or use fewer keywords." No crash, no model call.
+- **Empty wardrobe:** `python3 app.py ask 'vintage graphic tee under $30' --empty-wardrobe` → completed normally, with suggest_outfit returning general styling advice instead of crashing or returning an empty string.
+- **Model unavailable:** Broke one character of `GEMINI_API_KEY` in `.env`, ran a new query. `run_agent`'s try/except around `suggest_outfit`/`create_fit_card` caught `ModelUnavailable` and produced: "Found the item, but couldn't reach the model to finish: The model rejected your API key... Try again in a moment, or check your API key." Restored the real key and confirmed the same query completed normally afterward.
 
 
 ---
 
 ## The Improvement
 
-<!-- What you changed, why your diagnosis pointed at it, and the after-run in
-     the same table format. One change, measured properly.
+**What I changed:** In `tools.py::create_fit_card`, I added one line to the prompt requiring the model to "name at least one specific clothing piece from the outfit idea above — don't just describe the vibe without naming anything from it."
 
-     `python run_eval.py --label after` -->
-
-**What I changed:**
-
-**Which failure it was meant to fix:**
+**Which failure it was meant to fix:** Criterion 4 (fit card stays grounded) missed 4/5 in the before run because one try's caption mentioned only the item and price, with no reference to the outfit's wardrobe pieces.
 
 ### Run Log — After
 
 | Criterion | Target | Try 1 | Try 2 | Try 3 | Try 4 | Try 5 | Verdict |
 |---|---|---|---|---|---|---|---|
-| 1.  |  |  |  |  |  |  |  |
-| 2.  |  |  |  |  |  |  |  |
-| 3.  |  |  |  |  |  |  |  |
-| 4.  |  |  |  |  |  |  |  |
-| 5.  |  |  |  |  |  |  |  |
+| 1. Matching query completes all three tools | 4 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 2. Impossible query stops before second tool | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 3. State carries to suggest_outfit | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 4. Fit card stays grounded | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
+| 5. Outfit only names real wardrobe items | 5 of 5 | PASS | PASS | PASS | PASS | PASS | MET (5/5) |
 
-**Did it help, and how do I know:**
+**Did it help, and how do I know:** Yes. Criterion 4 went from 4/5 to 5/5 — every fit card across the after-run names at least one specific wardrobe piece (a ribbed tank top, a cropped hoodie) alongside the item and price. I also hit a real bug along the way: my first attempt at this fix accidentally left the `prompt = (...)` line nested inside an `if` block, so `create_fit_card` crashed with `UnboundLocalError` on every call. All 5 scenarios failed completely on that first after-run. I caught it from the trace output, fixed the indentation, and reran — the second after-run completed cleanly with the result shown above. That failed attempt is worth keeping in mind: an "improvement" can break the whole tool, and a full rerun is what caught it.
 
 <!-- If it made things worse, say that. Honestly reported, that earns full
      credit and is more interesting than one that worked. -->
@@ -321,11 +341,15 @@ full. -->
 
 ## What's Still Broken
 
-<!-- For each criterion still missed: what you'd do, and why you stopped where
-     you did. "I ran out of time" is fine if it's true. Pretending nothing is
-     left is not. -->
+All five criteria passed in the after-run, so nothing's actually missed. But a couple targets were probably set lower than they needed to be.
 
+**Criterion 1 (4 of 5):** I picked 4/5 because I thought my keyword search would mess up on some phrasings. It hit 5/5 both runs, so honestly the search handled it better than I expected — next time I'd just set this to 5/5.
 
+**Criteria 2, 3, 5 (5 of 5):** These are just plain code logic, not model output, so they stayed at 5/5 the whole time. No reason to loosen or tighten these.
+
+**Criterion 4:** This actually missed before and is fixed now. If I had more time I'd want to test it on an outfit suggestion that's less detailed (like a single item, no layering) since all my after-run tries happened to get richer outfits to pull from.
+
+**If I had more time:** I'd move suggest_outfit onto MCP too, since it's a stretch feature I skipped to make sure I got the required stuff done first.
 
 <!-- ═════════════════════════════════════════════════════════════════════
 
